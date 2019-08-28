@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 
 class BasicBlock(nn.Module):
@@ -149,10 +150,10 @@ class RegressionModel(nn.Module):
         self.output = nn.Conv2d(feature_size, num_anchors*4, kernel_size=3, padding=1)
 
     def forward(self, x):
-        out = torch.F.relu(self.conv1(x))
-        out = torch.F.relu(self.conv2(out))
-        out = torch.F.relu(self.conv3(out))
-        out = torch.F.relu(self.conv4(out))
+        out = F.relu(self.conv1(x))
+        out = F.relu(self.conv2(out))
+        out = F.relu(self.conv3(out))
+        out = F.relu(self.conv4(out))
         out = self.output(out)
 
         return out.contiguous().view(out.shape[0], -1, 4)
@@ -172,12 +173,12 @@ class ClassificationModel(nn.Module):
         self.output = nn.Conv2d(feature_size, num_anchors*num_classes, kernel_size=3, padding=1)
 
     def forward(self, x):
-        out = torch.F.relu(self.conv1(x))
-        out = torch.F.relu(self.conv2(out))
-        out = torch.F.relu(self.conv3(out))
-        out = torch.F.relu(self.conv4(out))
+        out = F.relu(self.conv1(x))
+        out = F.relu(self.conv2(out))
+        out = F.relu(self.conv3(out))
+        out = F.relu(self.conv4(out))
 
-        out = torch.F.sigmoid(self.output(out))
+        out = F.sigmoid(self.output(out))
 
         # TODO: Why are we doing all this?
         # out is B x C x W x H, with C = n_classes + n_anchors
@@ -216,9 +217,9 @@ class RetinaNet(nn.Module):
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
         self.layer1 = self._make_layer(block, 64, layers[0])
-        self.layer2 = self._make_layer(block, 128, layers[1])
-        self.layer3 = self._make_layer(block, 256, layers[2])
-        self.layer4 = self._make_layer(block, 512, layers[3])
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
 
         if block == BasicBlock:
             fpn_sizes = [self.layer2[layers[1]-1].conv2.out_channels, self.layer3[layers[2]-1].conv2.out_channels, self.layer4[layers[3]-1].conv2.out_channels]
@@ -265,7 +266,7 @@ class RetinaNet(nn.Module):
 
         x = self.conv1(img_batch)
         x = self.bn1(x)
-        x = torch.F.relu(x)
+        x = F.relu(x)
         x = self.maxpool(x)
 
         x1 = self.layer1(x)
@@ -274,6 +275,11 @@ class RetinaNet(nn.Module):
         x4 = self.layer4(x3)
 
         features = self.fpn([x2,x3,x4])
+
+        regression = torch.cat([self.regressionModel(feature) for feature in features], dim=1)
+
+        classification = torch.cat([self.classificationModel(feature) for feature in features], dim=1)
+
 
         #TODO: Calculate loss
         return features
