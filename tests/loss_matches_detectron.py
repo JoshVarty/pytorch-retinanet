@@ -50,12 +50,29 @@ def load_test_case_from_file(file):
 
 class TestStringMethods(unittest.TestCase):
 
-    def test_fpn3_bbox_select_l1_loss(self):
-
+    def test_fpn3_bbox_select_smooth_l1_loss(self):
         y_hat, y, locations, fg_num, detectron_loss = load_test_case_from_file("fpn3_test_case.npy")
-
         loss = naive_select_smooth_l1_loss(y_hat, y, locations, S=fg_num)
+        self.assertAlmostEqual(loss, detectron_loss, places=6)
 
+    def test_fpn4_bbox_select_smooth_l1_loss(self):
+        y_hat, y, locations, fg_num, detectron_loss = load_test_case_from_file("fpn4_test_case.npy")
+        loss = naive_select_smooth_l1_loss(y_hat, y, locations, S=fg_num)
+        self.assertAlmostEqual(loss, detectron_loss, places=6)
+    
+    def test_fpn5_bbox_select_smooth_l1_loss(self):
+        y_hat, y, locations, fg_num, detectron_loss = load_test_case_from_file("fpn5_test_case.npy")
+        loss = naive_select_smooth_l1_loss(y_hat, y, locations, S=fg_num)
+        self.assertAlmostEqual(loss, detectron_loss, places=6)
+    
+    def test_fpn6_bbox_select_smooth_l1_loss(self):
+        y_hat, y, locations, fg_num, detectron_loss = load_test_case_from_file("fpn6_test_case.npy")
+        loss = naive_select_smooth_l1_loss(y_hat, y, locations, S=fg_num)
+        self.assertAlmostEqual(loss, detectron_loss, places=6)
+    
+    def test_fpn7_bbox_select_smooth_l1_loss(self):
+        y_hat, y, locations, fg_num, detectron_loss = load_test_case_from_file("fpn7_test_case.npy")
+        loss = naive_select_smooth_l1_loss(y_hat, y, locations, S=fg_num)
         self.assertAlmostEqual(loss, detectron_loss, places=6)
 
 if __name__ == '__main__':
