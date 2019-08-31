@@ -6,6 +6,56 @@ import unittest
 import numpy as np
 import os
 
+def numpy_sigmoid_focal_loss(Y_hat, Y, weight, gamma, alpha):
+    """
+    A numpy implementation of Sigmoid Focal Loss: 
+    Paper: https://arxiv.org/pdf/1708.02002.pdf
+    Code:  https://github.com/pytorch/pytorch/blob/master/modules/detectron/sigmoid_focal_loss_op.cu#L31-L66
+    """
+    N = Y_hat.shape[0]
+    D = Y_hat.shape[1]
+    H = Y_hat.shape[2]
+    W = Y_hat.shape[3]
+
+    num_classes = 80
+    A = int(D / num_classes)
+
+    # Two weights:
+    #   Alpha Weighting for negative and positive examples
+    #   Loss weighted according to the total number of positive examples
+    zn = (1.0 - alpha) / weight
+    zp = alpha / weight
+
+    expandedTargets = np.repeat(Y, num_classes, 1)  # Expand Y into the same shape as Y_hat
+
+    aRange = np.arange(num_classes)             # Create a range like [0,1,...79]       Shape: (80,)
+    repeated = np.tile(aRange, A)               # Tile the range 9 times                Shape: (720,)
+    repeated = repeated.reshape((D,1,1))        # Reshape so we can broadcast           Shape: (720,1,1)
+    zeros = np.zeros((D, H, W))                 # Create zeros of desired shape         Shape: (720, H, W)
+    levelInfo = repeated + zeros                # Level info represents the class index of the corresponding prediction in Y_hat
+    levelInfo = np.tile(levelInfo, (N,1,1,1))   # Repeat levelInfo for each image       Shape: (2, 720, H, W)
+
+    # The target classes are in the range 1 - 81 and d is in the range 1-80
+    # because we predict A * 80 dim, so for comparison purposes, compare expandedTargets and (levelInfo + 1)
+    c1 = expandedTargets  == (levelInfo + 1) 
+    c2 = (expandedTargets != -1) & (expandedTargets != (levelInfo + 1))
+
+    #Convert logits to probabilities
+    probabilities = 1.0 / (1.0 + np.exp(-Y_hat))
+
+    # (1 - p) ^ gamma * log(p) where d == (t + 1)
+    term1 = np.power((1.0 - probabilities), gamma) * np.log(probabilities)
+    # p^gamma * log(1-p)       where d != (t + 1)
+    term2 = np.power(probabilities, gamma) * np.log(1 - probabilities)
+
+    loss1 = -(c1 * term1 * zp)
+    loss2 = -(c2 * term2 * zn)
+
+    l1 = np.sum(loss1)
+    l2 = np.sum(loss2)
+
+    totalLoss = (l1 + l2)
+    return totalLoss
 
 def naive_select_smooth_l1_loss(Y_hat, Y, locations, S, beta=0.11):
     """
