@@ -6,11 +6,14 @@ import unittest
 import numpy as np
 import os
 
-def numpy_sigmoid_focal_loss(Y_hat, Y, weight, gamma, alpha):
+def numpy_sigmoid_focal_loss(Y_hat, Y, fg_num, gamma=2.0, alpha=0.25):
     """
     A numpy implementation of Sigmoid Focal Loss: 
     Paper: https://arxiv.org/pdf/1708.02002.pdf
     Code:  https://github.com/pytorch/pytorch/blob/master/modules/detectron/sigmoid_focal_loss_op.cu#L31-L66
+
+    Gamma: 2.00 from paper and code
+    Alpha: 0.25 from paper and code
     """
     N = Y_hat.shape[0]
     D = Y_hat.shape[1]
@@ -23,8 +26,8 @@ def numpy_sigmoid_focal_loss(Y_hat, Y, weight, gamma, alpha):
     # Two weights:
     #   Alpha Weighting for negative and positive examples
     #   Loss weighted according to the total number of positive examples
-    zn = (1.0 - alpha) / weight
-    zp = alpha / weight
+    zn = (1.0 - alpha) / fg_num
+    zp = alpha / fg_num
 
     expandedTargets = np.repeat(Y, num_classes, 1)  # Expand Y into the same shape as Y_hat
 
@@ -94,12 +97,47 @@ def load_select_smooth_l1_test_case_from_file(file):
     y = test_data[1]                            # true targets: for example: M x 4
     locations = test_data[2]                    # locations of fg boxes: M x 4 (M is # of fg boxes at this level)
     fg_num = test_data[3]                       # Total number of fb boxes across all FPN levels
-    detectron_loss = test_data[4]               # The loss as calculated by Detectron
+    detectron_loss = float(test_data[4])        # The loss as calculated by Detectron
 
     return y_hat, y, locations, fg_num, detectron_loss
 
+def load_focal_loss_test_case_from_file(file):
+    test_data = np.load(file, allow_pickle=True)
+
+    y_hat = test_data[0]                       # Class predictions N x (A x C) x H X W
+    y = test_data[1]                           # Ground truth      N x A x H x W
+    fg_num = test_data[2]                      # Number of positive foreground examples
+    detectron_loss = float(test_data[3])       # The loss as calculated by Detectron
+
+    return y_hat, y, fg_num, detectron_loss
+
 class TestStringMethods(unittest.TestCase):
 
+    def test_fpn3_focal_loss(self):
+        y_hat, y, fg_num, detectron_loss = load_focal_loss_test_case_from_file("fpn3_focal_loss_test_case.npy")
+        loss = numpy_sigmoid_focal_loss(y_hat, y, fg_num)
+        self.assertAlmostEqual(loss, detectron_loss, places=4)
+    
+    def test_fpn4_focal_loss(self):
+        y_hat, y, fg_num, detectron_loss = load_focal_loss_test_case_from_file("fpn4_focal_loss_test_case.npy")
+        loss = numpy_sigmoid_focal_loss(y_hat, y, fg_num)
+        self.assertAlmostEqual(loss, detectron_loss, places=4)
+    
+    def test_fpn5_focal_loss(self):
+        y_hat, y, fg_num, detectron_loss = load_focal_loss_test_case_from_file("fpn5_focal_loss_test_case.npy")
+        loss = numpy_sigmoid_focal_loss(y_hat, y, fg_num)
+        self.assertAlmostEqual(loss, detectron_loss, places=4)
+    
+    def test_fpn6_focal_loss(self):
+        y_hat, y, fg_num, detectron_loss = load_focal_loss_test_case_from_file("fpn6_focal_loss_test_case.npy")
+        loss = numpy_sigmoid_focal_loss(y_hat, y, fg_num)
+        self.assertAlmostEqual(loss, detectron_loss, places=4)
+    
+    def test_fpn7_focal_loss(self):
+        y_hat, y, fg_num, detectron_loss = load_focal_loss_test_case_from_file("fpn7_focal_loss_test_case.npy")
+        loss = numpy_sigmoid_focal_loss(y_hat, y, fg_num)
+        self.assertAlmostEqual(loss, detectron_loss, places=4)
+    
     def test_fpn3_bbox_select_smooth_l1_loss(self):
         y_hat, y, locations, fg_num, detectron_loss = load_select_smooth_l1_test_case_from_file("select_smooth_l1_fpn3_test_case.npy")
         loss = naive_select_smooth_l1_loss(y_hat, y, locations, S=fg_num)
