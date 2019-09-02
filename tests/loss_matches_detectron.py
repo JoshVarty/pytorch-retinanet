@@ -197,7 +197,7 @@ def load_focal_loss_test_case_from_file(file):
 
     return y_hat, y, fg_num, detectron_loss
 
-class TestStringMethods(unittest.TestCase):
+class TestLossesAgainstDetectron(unittest.TestCase):
 
     def test_fpn3_torch_focal_loss(self):
         y_hat, y, fg_num, detectron_loss = load_focal_loss_test_case_from_file("fpn3_focal_loss_test_case.npy")
