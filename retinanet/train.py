@@ -110,8 +110,31 @@ def train_model():
 
         data = torch.Tensor(blobs['data'])
         data = data.to(cuda)
-        annotations = None
-        input = (data, annotations)
+
+        # The number of foreground predictions (TODO: Ground Truth or Predicted?)
+        fg_num = float(blobs['retnet_fg_num'])
+        # Get labels for classification
+        classification_labels = []
+        for i in range(3,8):
+            key = 'retnet_cls_labels_fpn' + str(i)
+            x = torch.Tensor(blobs[key])
+            x = x.to(cuda)
+            classification_labels.append(x)
+
+        # Get labels for regression
+        regression_targets = []
+        locations = []
+        for i in range(3,8):
+            key = 'retnet_roi_bbox_targets_fpn' + str(i)
+            x = torch.Tensor(blobs[key])
+            x = x.to(cuda)
+            regression_targets.append(x)
+            key = 'retnet_roi_fg_bbox_locs_fpn' + str(i)
+            x = torch.Tensor(blobs[key])
+            x = x.to(cuda)
+            locations.append(x)
+
+        input = (data, classification_labels, regression_targets, locations, fg_num)
         result = model(input)
         
         lr = lr_policy.get_lr_at_iter(cur_iter)

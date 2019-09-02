@@ -156,7 +156,7 @@ class RegressionModel(nn.Module):
         out = F.relu(self.conv4(out))
         out = self.output(out)
 
-        return out.contiguous().view(out.shape[0], -1, 4)
+        return out
 
 
 class ClassificationModel(nn.Module):
@@ -178,14 +178,8 @@ class ClassificationModel(nn.Module):
         out = F.relu(self.conv3(out))
         out = F.relu(self.conv4(out))
 
-        out = F.sigmoid(self.output(out))
-
-        # TODO: Why are we doing all this?
-        # out is B x C x W x H, with C = n_classes + n_anchors
-        out1 = out.permute(0, 2, 3, 1)
-        batch_size, width, height, channels = out1.shape
-        out2 = out1.view(batch_size, width, height, self.num_anchors, self.num_classes)
-        return out2.contiguous().view(x.shape[0], -1, self.num_classes)
+        out = self.output(out)
+        return out
 
 class RetinaNet(nn.Module):
 
@@ -257,10 +251,101 @@ class RetinaNet(nn.Module):
         self.regressionModel.output.weight.data.fill_(0)
         self.regressionModel.output.bias.data.fill_(0)
 
+    def focal_loss(self, Y_hat, Y, fg_num, gamma=2.0, alpha=0.25, num_classes=80):
+        """
+        A PyTorch implementation of Sigmoid Focal Loss: 
+        Paper: https://arxiv.org/pdf/1708.02002.pdf
+        Code:  https://github.com/pytorch/pytorch/blob/master/modules/detectron/sigmoid_focal_loss_op.cu#L31-L66
+
+        Gamma:      2.00 from paper and code
+        Alpha:      0.25 from paper and code
+        num_clases: 80 classes for COCO
+        """
+        N = Y_hat.shape[0]
+        D = Y_hat.shape[1]
+        H = Y_hat.shape[2]
+        W = Y_hat.shape[3]
+        A = int(D / num_classes)
+
+        # Two weights:
+        #   Alpha Weighting for negative and positive examples
+        #   Loss weighted according to the total number of positive examples
+        zn = (1.0 - alpha) / fg_num
+        zp = alpha / fg_num
+
+        cuda = torch.device('cuda')
+
+        expandedTargets = Y.repeat_interleave(80,1)             # Expand Y into the same shape as Y_hat
+        expandedTargets = expandedTargets.int()
+
+        aRange = torch.arange(num_classes, dtype=torch.int32)   # Create a range like [0,1,...79]       Shape: (80,)
+        aRange = aRange.to(cuda)
+        repeated = aRange.repeat(A)                             # Tile the range 9 times                Shape: (720,)
+        repeated = repeated.view((D,1,1))                       # Reshape so we can broadcast           Shape: (720,1,1)
+        zeros = torch.zeros((D, H, W), dtype=torch.int32)       # Create zeros of desired shape         Shape: (720, H, W)
+
+        zeros = zeros.to(cuda)
+        levelInfo = repeated + zeros                            # Level info represents the class index of the corresponding prediction in Y_hat
+        levelInfo = levelInfo.repeat(N,1,1,1)                   # Repeat levelInfo for each image       Shape: (2, 720, H, W)
+
+        # The target classes are in the range 1 - 81 and d is in the range 1-80
+        # because we predict A * 80 dim, so for comparison purposes, compare expandedTargets and (levelInfo + 1)
+        c1 = expandedTargets  == (levelInfo + 1) 
+        c2 = (expandedTargets != -1) & (expandedTargets != (levelInfo + 1))
+
+        #Convert logits to probabilities
+        probabilities = 1.0 / (1.0 + torch.exp(-Y_hat))
+
+        # (1 - p) ^ gamma * log(p) where d == (t + 1)
+        term1 = torch.pow((1.0 - probabilities), gamma) * torch.log(probabilities)
+        # p^gamma * log(1-p)       where d != (t + 1)
+        term2 = torch.pow(probabilities, gamma) * torch.log(1 - probabilities)
+
+        loss1 = -(c1.float() * term1 * zp)
+        loss2 = -(c2.float() * term2 * zn)
+
+        l1 = torch.sum(loss1)
+        l2 = torch.sum(loss2)
+
+        totalLoss = (l1 + l2)
+        return totalLoss
+
+    def select_smooth_l1_loss(self, Y_hat, Y, locations, fg_num, beta=0.11):
+        """
+        A PyTorch port of: https://github.com/pytorch/pytorch/blob/master/modules/detectron/select_smooth_l1_loss_op.cu#L52-L86
+
+        Beta is taken from: https://github.com/facebookresearch/Detectron/blob/master/detectron/core/config.py#L525
+        """
+
+        locations = locations.long()
+
+        y_hat1 = Y_hat[locations[:,0], locations[:,1], locations[:,2], locations[:,3]]
+        y_hat2 = Y_hat[locations[:,0], locations[:,1] + 1, locations[:,2], locations[:,3]]
+        y_hat3 = Y_hat[locations[:,0], locations[:,1] + 2, locations[:,2], locations[:,3]]
+        y_hat4 = Y_hat[locations[:,0], locations[:,1] + 3, locations[:,2], locations[:,3]]
+
+        y_hat = torch.stack([y_hat1, y_hat2, y_hat3,y_hat4], dim=1)
+
+        y1 = Y
+
+        val = y_hat - y1
+        abs_val = torch.abs(val)
+
+        mask1 = abs_val < beta
+        mask2 = ~mask1
+
+        res1 = torch.masked_select(((0.5 * val * val / beta)/fg_num), mask1)
+        res2 = torch.masked_select(((abs_val - 0.5 * beta)/fg_num), mask2)
+
+        s1 = res1.sum()
+        s2 = res2.sum()
+        loss = s1 + s2
+        return loss
+
     def forward(self, inputs):
 
         if self.training:
-            img_batch, annotations = inputs
+            img_batch, classification_labels, regression_targets, locations, fg_num = inputs
         else:
             img_batch = inputs
 
@@ -276,13 +361,25 @@ class RetinaNet(nn.Module):
 
         features = self.fpn([x2,x3,x4])
 
-        regression = torch.cat([self.regressionModel(feature) for feature in features], dim=1)
+        regression = [self.regressionModel(feature) for feature in features]
+        classification = [self.classificationModel(feature) for feature in features]
 
-        classification = torch.cat([self.classificationModel(feature) for feature in features], dim=1)
+        totalLoss = 0
 
+        # Select Smooth L1 Regression Loss
+        for i in range(len(regression)):
+            y_hat = regression[i]
+            y = regression_targets[i]
+            current_locations = locations[i]
+            totalLoss += self.select_smooth_l1_loss(y_hat, y, current_locations, fg_num)
 
-        #TODO: Calculate loss
-        return features
+        # Focal Loss
+        for i in range(len(classification)):
+            y_hat = classification[i]
+            y = classification_labels[i]
+            totalLoss += self.focal_loss(y_hat, y, fg_num)
+
+        return totalLoss
 
 
 
