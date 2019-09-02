@@ -113,7 +113,40 @@ def numpy_sigmoid_focal_loss(Y_hat, Y, fg_num, gamma=2.0, alpha=0.25, num_classe
     totalLoss = (l1 + l2)
     return totalLoss
 
-def naive_select_smooth_l1_loss(Y_hat, Y, locations, S, beta=0.11):
+def torch_select_smooth_l1_loss(Y_hat, Y, locations, fg_num, beta=0.11):
+    """
+    A PyTorch port of: https://github.com/pytorch/pytorch/blob/master/modules/detectron/select_smooth_l1_loss_op.cu#L52-L86
+
+    Beta is taken from: https://github.com/facebookresearch/Detectron/blob/master/detectron/core/config.py#L525
+    """
+
+    locations = locations.long()
+
+    y_hat1 = Y_hat[locations[:,0], locations[:,1], locations[:,2], locations[:,3]]
+    y_hat2 = Y_hat[locations[:,0], locations[:,1] + 1, locations[:,2], locations[:,3]]
+    y_hat3 = Y_hat[locations[:,0], locations[:,1] + 2, locations[:,2], locations[:,3]]
+    y_hat4 = Y_hat[locations[:,0], locations[:,1] + 3, locations[:,2], locations[:,3]]
+
+    y_hat = torch.stack([y_hat1, y_hat2, y_hat3,y_hat4], dim=1)
+
+    y1 = Y
+
+    val = y_hat - y1
+    abs_val = np.abs(val)
+
+    mask1 = abs_val < beta
+    mask2 = ~mask1
+
+    res1 = torch.masked_select(((0.5 * val * val / beta)/fg_num), mask1)
+    res2 = torch.masked_select(((abs_val - 0.5 * beta)/fg_num), mask2)
+
+    s1 = res1.sum()
+    s2 = res2.sum()
+    loss = s1 + s2
+    return loss
+
+
+def naive_select_smooth_l1_loss(Y_hat, Y, locations, fg_num, beta=0.11):
     """
     A Python (CPU) port of: https://github.com/pytorch/pytorch/blob/master/modules/detectron/select_smooth_l1_loss_op.cu#L52-L86
 
@@ -138,9 +171,9 @@ def naive_select_smooth_l1_loss(Y_hat, Y, locations, S, beta=0.11):
             abs_val = np.abs(val)
             
             if abs_val < beta:
-                out.append((0.5 * val * val / beta)/S)
+                out.append((0.5 * val * val / beta)/fg_num)
             else:
-                out.append((abs_val - 0.5 * beta)/S)
+                out.append((abs_val - 0.5 * beta)/fg_num)
 
     return np.sum(out)
 
@@ -231,29 +264,74 @@ class TestStringMethods(unittest.TestCase):
         loss = numpy_sigmoid_focal_loss(y_hat, y, fg_num)
         self.assertAlmostEqual(loss, detectron_loss, places=4)
     
+    def test_torch_fpn3_bbox_select_smooth_l1_loss(self):
+        y_hat, y, locations, fg_num, detectron_loss = load_select_smooth_l1_test_case_from_file("select_smooth_l1_fpn3_test_case.npy")
+        y_hat = torch.tensor(y_hat)
+        y = torch.tensor(y)
+        locations = torch.tensor(locations)
+        loss = torch_select_smooth_l1_loss(y_hat, y, locations, fg_num=fg_num)
+        loss = loss.numpy()
+        self.assertAlmostEqual(loss, detectron_loss, places=6)
+
+    def test_torch_fpn4_bbox_select_smooth_l1_loss(self):
+        y_hat, y, locations, fg_num, detectron_loss = load_select_smooth_l1_test_case_from_file("select_smooth_l1_fpn4_test_case.npy")
+        y_hat = torch.tensor(y_hat)
+        y = torch.tensor(y)
+        locations = torch.tensor(locations)
+        loss = torch_select_smooth_l1_loss(y_hat, y, locations, fg_num=fg_num)
+        loss = loss.numpy()
+        self.assertAlmostEqual(loss, detectron_loss, places=6)
+
+    def test_torch_fpn5_bbox_select_smooth_l1_loss(self):
+        y_hat, y, locations, fg_num, detectron_loss = load_select_smooth_l1_test_case_from_file("select_smooth_l1_fpn5_test_case.npy")
+        y_hat = torch.tensor(y_hat)
+        y = torch.tensor(y)
+        locations = torch.tensor(locations)
+        loss = torch_select_smooth_l1_loss(y_hat, y, locations, fg_num=fg_num)
+        loss = loss.numpy()
+        self.assertAlmostEqual(loss, detectron_loss, places=6)
+
+    def test_torch_fpn6_bbox_select_smooth_l1_loss(self):
+        y_hat, y, locations, fg_num, detectron_loss = load_select_smooth_l1_test_case_from_file("select_smooth_l1_fpn6_test_case.npy")
+        y_hat = torch.tensor(y_hat)
+        y = torch.tensor(y)
+        locations = torch.tensor(locations)
+        loss = torch_select_smooth_l1_loss(y_hat, y, locations, fg_num=fg_num)
+        loss = loss.numpy()
+        self.assertAlmostEqual(loss, detectron_loss, places=6)
+
+    def test_torch_fpn7_bbox_select_smooth_l1_loss(self):
+        y_hat, y, locations, fg_num, detectron_loss = load_select_smooth_l1_test_case_from_file("select_smooth_l1_fpn7_test_case.npy")
+        y_hat = torch.tensor(y_hat)
+        y = torch.tensor(y)
+        locations = torch.tensor(locations)
+        loss = torch_select_smooth_l1_loss(y_hat, y, locations, fg_num=fg_num)
+        loss = loss.numpy()
+        self.assertAlmostEqual(loss, detectron_loss, places=6)
+
     def test_fpn3_bbox_select_smooth_l1_loss(self):
         y_hat, y, locations, fg_num, detectron_loss = load_select_smooth_l1_test_case_from_file("select_smooth_l1_fpn3_test_case.npy")
-        loss = naive_select_smooth_l1_loss(y_hat, y, locations, S=fg_num)
+        loss = naive_select_smooth_l1_loss(y_hat, y, locations, fg_num=fg_num)
         self.assertAlmostEqual(loss, detectron_loss, places=6)
 
     def test_fpn4_bbox_select_smooth_l1_loss(self):
         y_hat, y, locations, fg_num, detectron_loss = load_select_smooth_l1_test_case_from_file("select_smooth_l1_fpn4_test_case.npy")
-        loss = naive_select_smooth_l1_loss(y_hat, y, locations, S=fg_num)
+        loss = naive_select_smooth_l1_loss(y_hat, y, locations, fg_num=fg_num)
         self.assertAlmostEqual(loss, detectron_loss, places=6)
     
     def test_fpn5_bbox_select_smooth_l1_loss(self):
         y_hat, y, locations, fg_num, detectron_loss = load_select_smooth_l1_test_case_from_file("select_smooth_l1_fpn5_test_case.npy")
-        loss = naive_select_smooth_l1_loss(y_hat, y, locations, S=fg_num)
+        loss = naive_select_smooth_l1_loss(y_hat, y, locations, fg_num=fg_num)
         self.assertAlmostEqual(loss, detectron_loss, places=6)
     
     def test_fpn6_bbox_select_smooth_l1_loss(self):
         y_hat, y, locations, fg_num, detectron_loss = load_select_smooth_l1_test_case_from_file("select_smooth_l1_fpn6_test_case.npy")
-        loss = naive_select_smooth_l1_loss(y_hat, y, locations, S=fg_num)
+        loss = naive_select_smooth_l1_loss(y_hat, y, locations, fg_num=fg_num)
         self.assertAlmostEqual(loss, detectron_loss, places=6)
     
     def test_fpn7_bbox_select_smooth_l1_loss(self):
         y_hat, y, locations, fg_num, detectron_loss = load_select_smooth_l1_test_case_from_file("select_smooth_l1_fpn7_test_case.npy")
-        loss = naive_select_smooth_l1_loss(y_hat, y, locations, S=fg_num)
+        loss = naive_select_smooth_l1_loss(y_hat, y, locations, fg_num=fg_num)
         self.assertAlmostEqual(loss, detectron_loss, places=6)
 
 if __name__ == '__main__':
