@@ -218,9 +218,6 @@ class RetinaNet(nn.Module):
         if block == BasicBlock:
             fpn_sizes = [self.layer2[layers[1]-1].conv2.out_channels, self.layer3[layers[2]-1].conv2.out_channels, self.layer4[layers[3]-1].conv2.out_channels]
         elif block == Bottleneck:
-            x = self.layer2[layers[1]-1].conv3.out_channels
-            xx = self.layer3[layers[2]-1].conv3.out_channels,
-            xxx = self.layer4[layers[3]-1].conv3.out_channels
             fpn_sizes = [self.layer2[layers[1]-1].conv3.out_channels, self.layer3[layers[2]-1].conv3.out_channels, self.layer4[layers[3]-1].conv3.out_channels]
 
         self.fpn = PyramidFeatures(fpn_sizes[0], fpn_sizes[1], fpn_sizes[2])
@@ -228,11 +225,6 @@ class RetinaNet(nn.Module):
         self.regressionModel = RegressionModel(256)
         self.classificationModel = ClassificationModel(256, num_classes=num_classes)
 
-        #self.anchors = Anchors()
-        self.anchors = None
-        self.regressBoxes = None
-
-        self.clipBoxes = ClipBoxes()
         self.focalLoss = None
 
         for m in self.modules():
@@ -276,15 +268,12 @@ class RetinaNet(nn.Module):
         cuda = torch.device('cuda')
 
         expandedTargets = Y.repeat_interleave(80,1)             # Expand Y into the same shape as Y_hat
-        expandedTargets = expandedTargets.int()
 
-        aRange = torch.arange(num_classes, dtype=torch.int32)   # Create a range like [0,1,...79]       Shape: (80,)
-        aRange = aRange.to(cuda)
+        aRange = torch.arange(num_classes, dtype=torch.int32, device=cuda)   # Create a range like [0,1,...79]       Shape: (80,)
         repeated = aRange.repeat(A)                             # Tile the range 9 times                Shape: (720,)
         repeated = repeated.view((D,1,1))                       # Reshape so we can broadcast           Shape: (720,1,1)
-        zeros = torch.zeros((D, H, W), dtype=torch.int32)       # Create zeros of desired shape         Shape: (720, H, W)
+        zeros = torch.zeros((D, H, W), dtype=torch.int32, device=cuda)       # Create zeros of desired shape         Shape: (720, H, W)
 
-        zeros = zeros.to(cuda)
         levelInfo = repeated + zeros                            # Level info represents the class index of the corresponding prediction in Y_hat
         levelInfo = levelInfo.repeat(N,1,1,1)                   # Repeat levelInfo for each image       Shape: (2, 720, H, W)
 

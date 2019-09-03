@@ -123,13 +123,6 @@ def add_retinanet_blobs(blobs, im_scales, roidb, image_width, image_height):
                 level = int(np.log2(foa.stride))
                 key = '{}_fpn{}'.format(k, level)
                 if k == 'retnet_roi_fg_bbox_locs':
-                    print()
-                    print("Foa:", i)
-                    print("Level:", level)
-                    print("Key:", key)
-                    print("im_i:", im_i)
-                    print(v)
-
                     v[:, 0] = im_i
                     # loc_stride: 80 * 4 if cls_specific else 4
                     loc_stride = 4  # 4 coordinate corresponding to bbox prediction
@@ -141,11 +134,8 @@ def add_retinanet_blobs(blobs, im_scales, roidb, image_width, image_height):
                     # specific, based on the label, the location of current
                     # anchor is class_label * 4 and then we take into account
                     # the anchor_ind if the anchors
-                    print(v)
                     v[:, 1] *= 4
-                    print(v)
                     v[:, 1] += loc_stride * anchor_ind
-                    print(v)
                 blobs[key].append(v)
         blobs['retnet_fg_num'] += fg_num
         blobs['retnet_bg_num'] += bg_num
@@ -158,8 +148,6 @@ def add_retinanet_blobs(blobs, im_scales, roidb, image_width, image_height):
         if isinstance(v, list) and len(v) > 0:
             # compute number of anchors
             A = int(len(v) / N)
-            print("k", k)
-            print(A)
             # for the cls branch labels [per fpn level],
             # we have blobs['retnet_cls_labels_fpn{}'] as a list until this step
             # and length of this list is N x A where
@@ -194,16 +182,16 @@ def add_retinanet_blobs(blobs, im_scales, roidb, image_width, image_height):
 def _get_retinanet_blobs(
         foas, all_anchors, gt_boxes, gt_classes, im_width, im_height):
     total_anchors = all_anchors.shape[0]
-    logger.info('Getting mad blobs: im_height {} im_width: {}'.format(
+    logger.debug('Getting mad blobs: im_height {} im_width: {}'.format(
         im_height, im_width))
 
     inds_inside = np.arange(all_anchors.shape[0])
     anchors = all_anchors
     num_inside = len(inds_inside)
 
-    logger.info('total_anchors: {}'.format(total_anchors))
-    logger.info('inds_inside: {}'.format(num_inside))
-    logger.info('anchors.shape: {}'.format(anchors.shape))
+    logger.debug('total_anchors: {}'.format(total_anchors))
+    logger.debug('inds_inside: {}'.format(num_inside))
+    logger.debug('anchors.shape: {}'.format(anchors.shape))
 
     # Compute anchor labels:
     # label=1 is positive, 0 is negative, -1 is don't care (ignore)
@@ -258,7 +246,6 @@ def _get_retinanet_blobs(
     for foa in foas:
         H = foa.field_size
         W = foa.field_size
-        print('(',H, W,')')
         end_idx = start_idx + H * W
         _labels = labels[start_idx:end_idx]
         _bbox_targets = bbox_targets[start_idx:end_idx, :]

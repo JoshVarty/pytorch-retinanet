@@ -100,6 +100,8 @@ class JsonDataset(object):
         image_ids = self.COCO.getImgIds()
         image_ids.sort()
         roidb = copy.deepcopy(self.COCO.loadImgs(image_ids))
+        #HACK: To minimize load time, just work with 1,000 images for now
+        roidb = roidb[:10000]
         for entry in roidb:
             self._prep_roidb_entry(entry)
         if gt:

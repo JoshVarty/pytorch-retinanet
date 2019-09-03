@@ -93,20 +93,15 @@ def train_model():
     model.training = True
 
     #TODO: Use same optimizer as they did
-    optimizer = optim.Adam(model.parameters(), lr=1e-5)
+    optimizer = optim.Adam(model.parameters(), lr=0.00125)
 
     cuda = torch.device('cuda')
     model = model.to(cuda)
 
     for cur_iter in range(cfg.SOLVER.MAX_ITER):
+        optimizer.zero_grad()
         
         blobs = coco_dataloader.get_next_minibatch()
-
-        for i in sorted(blobs.keys()):
-          try:
-            print(i, blobs[i].shape)
-          except:
-            print(i)
 
         data = torch.Tensor(blobs['data'])
         data = data.to(cuda)
@@ -117,8 +112,7 @@ def train_model():
         classification_labels = []
         for i in range(3,8):
             key = 'retnet_cls_labels_fpn' + str(i)
-            x = torch.Tensor(blobs[key])
-            x = x.to(cuda)
+            x = torch.from_numpy(blobs[key]).cuda()
             classification_labels.append(x)
 
         # Get labels for regression
@@ -126,20 +120,21 @@ def train_model():
         locations = []
         for i in range(3,8):
             key = 'retnet_roi_bbox_targets_fpn' + str(i)
-            x = torch.Tensor(blobs[key])
-            x = x.to(cuda)
+            x = torch.from_numpy(blobs[key]).cuda()
             regression_targets.append(x)
             key = 'retnet_roi_fg_bbox_locs_fpn' + str(i)
-            x = torch.Tensor(blobs[key])
-            x = x.to(cuda)
+            x = torch.from_numpy(blobs[key]).cuda()
             locations.append(x)
 
         input = (data, classification_labels, regression_targets, locations, fg_num)
-        result = model(input)
+        loss = model(input)
         
         lr = lr_policy.get_lr_at_iter(cur_iter)
         optimizer.lr = lr
-        optimizer.zero_grad()
+
+        optimizer.step()
+
+        print(loss)
 
 
 
