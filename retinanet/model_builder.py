@@ -243,7 +243,7 @@ class RetinaNet(nn.Module):
         self.regressionModel.output.weight.data.fill_(0)
         self.regressionModel.output.bias.data.fill_(0)
 
-    def focal_loss(self, Y_hat, Y, fg_num, gamma=2.0, alpha=0.25, num_classes=80):
+    def focal_loss(self, Y_hat, Y, fg_num, gamma=2.0, alpha=0.25, num_classes=80, deviceName="cuda"):
         """
         A PyTorch implementation of Sigmoid Focal Loss: 
         Paper: https://arxiv.org/pdf/1708.02002.pdf
@@ -265,17 +265,17 @@ class RetinaNet(nn.Module):
         zn = (1.0 - alpha) / fg_num
         zp = alpha / fg_num
 
-        cuda = torch.device('cuda')
+        device = torch.device(deviceName)
 
-        expandedTargets = Y.repeat_interleave(80,1)             # Expand Y into the same shape as Y_hat
+        expandedTargets = Y.repeat_interleave(80,1)                             # Expand Y into the same shape as Y_hat
 
-        aRange = torch.arange(num_classes, dtype=torch.int32, device=cuda)   # Create a range like [0,1,...79]       Shape: (80,)
-        repeated = aRange.repeat(A)                             # Tile the range 9 times                Shape: (720,)
-        repeated = repeated.view((D,1,1))                       # Reshape so we can broadcast           Shape: (720,1,1)
-        zeros = torch.zeros((D, H, W), dtype=torch.int32, device=cuda)       # Create zeros of desired shape         Shape: (720, H, W)
+        aRange = torch.arange(num_classes, dtype=torch.int32, device=device)    # Create a range like [0,1,...79]       Shape: (80,)
+        repeated = aRange.repeat(A)                                             # Tile the range 9 times                Shape: (720,)
+        repeated = repeated.view((D,1,1))                                       # Reshape so we can broadcast           Shape: (720,1,1)
+        zeros = torch.zeros((D, H, W), dtype=torch.int32, device=device)        # Create zeros of desired shape         Shape: (720, H, W)
 
-        levelInfo = repeated + zeros                            # Level info represents the class index of the corresponding prediction in Y_hat
-        levelInfo = levelInfo.repeat(N,1,1,1)                   # Repeat levelInfo for each image       Shape: (2, 720, H, W)
+        levelInfo = repeated + zeros                                            # Level info represents the class index of the corresponding prediction in Y_hat
+        levelInfo = levelInfo.repeat(N,1,1,1)                                   # Repeat levelInfo for each image       Shape: (2, 720, H, W)
 
         # The target classes are in the range 1 - 81 and d is in the range 1-80
         # because we predict A * 80 dim, so for comparison purposes, compare expandedTargets and (levelInfo + 1)
