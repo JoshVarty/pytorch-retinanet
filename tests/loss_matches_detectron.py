@@ -7,7 +7,7 @@ import os
 import torch
 import numpy as np
 
-def torch_sigmoid_focal_loss(Y_hat, Y, fg_num, gamma=2.0, alpha=0.25, num_classes=80):
+def torch_sigmoid_focal_loss(Y_hat, Y, fg_num, gamma=2.0, alpha=0.25, num_classes=80, deviceName="cuda"):
     """
     A PyTorch implementation of Sigmoid Focal Loss: 
     Paper: https://arxiv.org/pdf/1708.02002.pdf
@@ -29,14 +29,17 @@ def torch_sigmoid_focal_loss(Y_hat, Y, fg_num, gamma=2.0, alpha=0.25, num_classe
     zn = (1.0 - alpha) / fg_num
     zp = alpha / fg_num
 
-    expandedTargets = Y.repeat_interleave(80,1)             # Expand Y into the same shape as Y_hat
+    device = torch.device(deviceName)
 
-    aRange = torch.arange(num_classes, dtype=torch.int32)   # Create a range like [0,1,...79]       Shape: (80,)
-    repeated = aRange.repeat(A)                             # Tile the range 9 times                Shape: (720,)
-    repeated = repeated.view((D,1,1))                       # Reshape so we can broadcast           Shape: (720,1,1)
-    zeros = torch.zeros((D, H, W), dtype=torch.int32)       # Create zeros of desired shape         Shape: (720, H, W)
-    levelInfo = repeated + zeros                            # Level info represents the class index of the corresponding prediction in Y_hat
-    levelInfo = levelInfo.repeat(N,1,1,1)                   # Repeat levelInfo for each image       Shape: (2, 720, H, W)
+    expandedTargets = Y.repeat_interleave(80,1)                             # Expand Y into the same shape as Y_hat
+
+    aRange = torch.arange(num_classes, dtype=torch.int32, device=device)    # Create a range like [0,1,...79]       Shape: (80,)
+    repeated = aRange.repeat(A)                                             # Tile the range 9 times                Shape: (720,)
+    repeated = repeated.view((D,1,1))                                       # Reshape so we can broadcast           Shape: (720,1,1)
+    zeros = torch.zeros((D, H, W), dtype=torch.int32, device=device)        # Create zeros of desired shape         Shape: (720, H, W)
+
+    levelInfo = repeated + zeros                                            # Level info represents the class index of the corresponding prediction in Y_hat
+    levelInfo = levelInfo.repeat(N,1,1,1)                                   # Repeat levelInfo for each image       Shape: (2, 720, H, W)
 
     # The target classes are in the range 1 - 81 and d is in the range 1-80
     # because we predict A * 80 dim, so for comparison purposes, compare expandedTargets and (levelInfo + 1)
@@ -58,10 +61,10 @@ def torch_sigmoid_focal_loss(Y_hat, Y, fg_num, gamma=2.0, alpha=0.25, num_classe
     l2 = torch.sum(loss2)
 
     totalLoss = (l1 + l2)
-    return totalLoss.numpy()
+    return totalLoss
 
 def numpy_sigmoid_focal_loss(Y_hat, Y, fg_num, gamma=2.0, alpha=0.25, num_classes=80):
-    """
+    """torch_sigmoid_focal_loss
     A numpy implementation of Sigmoid Focal Loss: 
     Paper: https://arxiv.org/pdf/1708.02002.pdf
     Code:  https://github.com/pytorch/pytorch/blob/master/modules/detectron/sigmoid_focal_loss_op.cu#L31-L66
@@ -204,7 +207,7 @@ class TestLossesAgainstDetectron(unittest.TestCase):
         y_hat = torch.tensor(y_hat)
         y = torch.tensor(y)
         fg_num = torch.tensor(fg_num)
-        loss = torch_sigmoid_focal_loss(y_hat, y, fg_num)
+        loss = torch_sigmoid_focal_loss(y_hat, y, fg_num, deviceName="cpu").numpy()
         self.assertAlmostEqual(loss, detectron_loss, places=4)
     
     def test_fpn4_torch_focal_loss(self):
@@ -212,7 +215,7 @@ class TestLossesAgainstDetectron(unittest.TestCase):
         y_hat = torch.tensor(y_hat)
         y = torch.tensor(y)
         fg_num = torch.tensor(fg_num)
-        loss = torch_sigmoid_focal_loss(y_hat, y, fg_num)
+        loss = torch_sigmoid_focal_loss(y_hat, y, fg_num, deviceName="cpu").numpy()
         self.assertAlmostEqual(loss, detectron_loss, places=4)
     
     def test_fpn5_torch_focal_loss(self):
@@ -220,7 +223,7 @@ class TestLossesAgainstDetectron(unittest.TestCase):
         y_hat = torch.tensor(y_hat)
         y = torch.tensor(y)
         fg_num = torch.tensor(fg_num)
-        loss = torch_sigmoid_focal_loss(y_hat, y, fg_num)
+        loss = torch_sigmoid_focal_loss(y_hat, y, fg_num, deviceName="cpu").numpy()
         self.assertAlmostEqual(loss, detectron_loss, places=4)
     
     def test_fpn6_torch_focal_loss(self):
@@ -228,7 +231,7 @@ class TestLossesAgainstDetectron(unittest.TestCase):
         y_hat = torch.tensor(y_hat)
         y = torch.tensor(y)
         fg_num = torch.tensor(fg_num)
-        loss = torch_sigmoid_focal_loss(y_hat, y, fg_num)
+        loss = torch_sigmoid_focal_loss(y_hat, y, fg_num, deviceName="cpu").numpy()
         self.assertAlmostEqual(loss, detectron_loss, places=4)
     
     def test_fpn7_torch_focal_loss(self):
@@ -236,7 +239,7 @@ class TestLossesAgainstDetectron(unittest.TestCase):
         y_hat = torch.tensor(y_hat)
         y = torch.tensor(y)
         fg_num = torch.tensor(fg_num)
-        loss = torch_sigmoid_focal_loss(y_hat, y, fg_num)
+        loss = torch_sigmoid_focal_loss(y_hat, y, fg_num, deviceName="cpu").numpy()
         self.assertAlmostEqual(loss, detectron_loss, places=4)
 
     def test_fpn3_numpy_focal_loss(self):
