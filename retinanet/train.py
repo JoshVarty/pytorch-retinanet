@@ -1,7 +1,8 @@
 import os
-import logging
-import numpy as np
 import cv2
+import logging
+import collections
+import numpy as np
 
 from retinanet import lr_policy
 from retinanet.config import cfg
@@ -93,13 +94,17 @@ def train_model():
     model.training = True
 
     #TODO: Use same optimizer as they did
-    optimizer = optim.Adam(model.parameters(), lr=0.00125)
+    optimizer = optim.SGD(model.parameters(), lr=0.0000125, momentum=cfg.SOLVER.MOMENTUM)
 
     cuda = torch.device('cuda')
     model = model.to(cuda)
 
+    losses = collections.deque(maxlen=100)
+
     for cur_iter in range(cfg.SOLVER.MAX_ITER):
         optimizer.zero_grad()
+        lr = lr_policy.get_lr_at_iter(cur_iter)
+        optimizer.lr = lr
         
         blobs = coco_dataloader.get_next_minibatch()
 
@@ -110,7 +115,7 @@ def train_model():
         fg_num = float(blobs['retnet_fg_num'])
         # Get labels for classification
         classification_labels = []
-        for i in range(3,8):
+        for i in range(cfg.FPN.RPN_MIN_LEVEL, cfg.FPN.RPN_MAX_LEVEL + 1):
             key = 'retnet_cls_labels_fpn' + str(i)
             x = torch.from_numpy(blobs[key]).cuda()
             classification_labels.append(x)
@@ -118,7 +123,7 @@ def train_model():
         # Get labels for regression
         regression_targets = []
         locations = []
-        for i in range(3,8):
+        for i in range(cfg.FPN.RPN_MIN_LEVEL, cfg.FPN.RPN_MAX_LEVEL + 1):
             key = 'retnet_roi_bbox_targets_fpn' + str(i)
             x = torch.from_numpy(blobs[key]).cuda()
             regression_targets.append(x)
@@ -128,13 +133,17 @@ def train_model():
 
         input = (data, classification_labels, regression_targets, locations, fg_num)
         loss = model(input)
-        
-        lr = lr_policy.get_lr_at_iter(cur_iter)
-        optimizer.lr = lr
-
+        loss.backward()
         optimizer.step()
 
+        losses.append(float(loss))
+
         print(loss)
+
+        if cur_iter % 100 == 0:
+            print("Iteration: {}\tAvg Loss:{}".format(cur_iter, np.mean(losses)))
+        
+
 
 
 
